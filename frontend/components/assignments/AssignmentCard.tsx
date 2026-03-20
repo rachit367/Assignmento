@@ -3,12 +3,19 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
-import { AssignmentListItem } from '@/types/assignment'
+import { AssignmentListItem, AssignmentStatus } from '@/types/assignment'
 import ThreeDotMenu from '@/components/ui/ThreeDotMenu'
 
 interface AssignmentCardProps {
   assignment: AssignmentListItem
   onDelete: (id: string) => void
+}
+
+const STATUS_CONFIG: Record<AssignmentStatus, { label: string; color: string; bg: string; pulse: boolean }> = {
+  pending:    { label: 'Queued',     color: '#d97706', bg: 'rgba(217,119,6,0.1)',  pulse: false },
+  processing: { label: 'Generating', color: '#2563eb', bg: 'rgba(37,99,235,0.1)', pulse: true  },
+  complete:   { label: 'Ready',      color: '#16a34a', bg: 'rgba(22,163,74,0.1)', pulse: false },
+  error:      { label: 'Error',      color: '#dc2626', bg: 'rgba(220,38,38,0.1)', pulse: false },
 }
 
 export default function AssignmentCard({ assignment, onDelete }: AssignmentCardProps) {
@@ -22,6 +29,8 @@ export default function AssignmentCard({ assignment, onDelete }: AssignmentCardP
 
   const assignedDate = format(new Date(assignment.createdAt), 'dd-MM-yyyy')
   const dueDate = format(new Date(assignment.dueDate), 'dd-MM-yyyy')
+
+  const status = STATUS_CONFIG[assignment.status] ?? STATUS_CONFIG.pending
 
   return (
     <div
@@ -40,13 +49,44 @@ export default function AssignmentCard({ assignment, onDelete }: AssignmentCardP
       onMouseEnter={(e) => { if (!confirmingDelete) { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.08)'; e.currentTarget.style.borderColor = 'var(--color-text-muted)' } }}
       onMouseLeave={(e) => { if (!confirmingDelete) { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = 'var(--color-border)' } }}
     >
-      {/* Top row: title + menu */}
+      {/* Top row: title + status badge + menu */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.4, flex: 1 }}>
           {assignment.name}
         </h3>
-        <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0 }}>
-          <ThreeDotMenu onView={handleView} onDelete={handleDeleteClick} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {/* Status badge */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              backgroundColor: status.bg,
+              borderRadius: 20,
+              padding: '3px 9px',
+            }}
+          >
+            <span
+              className={status.pulse ? 'pulse-dot' : ''}
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                backgroundColor: status.color,
+                display: 'inline-block',
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontSize: 11, fontWeight: 600, color: status.color, letterSpacing: '0.02em' }}>
+              {status.label}
+            </span>
+          </div>
+
+          {/* Three-dot menu */}
+          <div onClick={(e) => e.stopPropagation()}>
+            <ThreeDotMenu onView={handleView} onDelete={handleDeleteClick} />
+          </div>
         </div>
       </div>
 
