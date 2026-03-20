@@ -35,19 +35,17 @@ export default function AssignmentCard({ assignment, onDelete }: AssignmentCardP
   return (
     <div
       onClick={!confirmingDelete ? handleView : undefined}
+      className={`assignment-card${confirmingDelete ? ' confirming-delete' : ''}`}
       style={{
         backgroundColor: 'var(--color-surface)',
         border: `1px solid ${confirmingDelete ? '#fca5a5' : 'var(--color-border)'}`,
         borderRadius: 16,
         padding: '18px 20px',
         cursor: confirmingDelete ? 'default' : 'pointer',
-        transition: 'box-shadow 0.15s ease, border-color 0.15s ease',
         display: 'flex',
         flexDirection: 'column',
         gap: 14,
       }}
-      onMouseEnter={(e) => { if (!confirmingDelete) { e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.08)'; e.currentTarget.style.borderColor = 'var(--color-text-muted)' } }}
-      onMouseLeave={(e) => { if (!confirmingDelete) { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = 'var(--color-border)' } }}
     >
       {/* Top row: title + status badge + menu */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>

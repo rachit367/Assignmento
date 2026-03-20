@@ -31,5 +31,6 @@ assignmentSchema.index({ createdAt: -1 })
 assignmentSchema.index({ name: 1 })
 assignmentSchema.index({ status: 1 })
 assignmentSchema.index({ name: 1, createdAt: -1 })
+assignmentSchema.index({ status: 1, createdAt: -1 })
 
 module.exports = mongoose.model('Assignment', assignmentSchema)

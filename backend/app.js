@@ -4,7 +4,7 @@ const cors = require('cors')
 const path = require('path')
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:8080',
+  origin: process.env.FRONTEND_URL,
 }))
 app.use(express.urlencoded({ extended: true }))
 app.use(express.json())

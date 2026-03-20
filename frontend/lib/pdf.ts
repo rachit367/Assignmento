@@ -1,4 +1,3 @@
-import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 
 // A4 dimensions in mm
@@ -11,6 +10,9 @@ interface PDFOptions {
   /** CSS selector for elements to hide before capture (e.g. answer key for questions-only) */
   hideSelector?: string
 }
+
+/** Yield to the browser so it can paint UI updates (e.g. "Preparing..." state) */
+const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0))
 
 export async function downloadAsPDF(
   elementId: string,
@@ -53,7 +55,7 @@ export async function downloadAsPDF(
   )
 
   try {
-    // 5. Capture the element as a high-res canvas
+    // 5. Capture the element as a high-res canvas (must run on main thread — needs DOM)
     const canvas = await html2canvas(element, {
       scale: 2,
       useCORS: true,
@@ -83,7 +85,7 @@ export async function downloadAsPDF(
     const sectionStarts = sectionOffsets.map((y) => y * scaleRatio)
 
     // ── Build page slices ────────────────────────────────────────────────────
-    const pages: Array<{ y: number; h: number }> = []
+    const pageBounds: Array<{ y: number; h: number }> = []
     let cursor = 0
 
     while (cursor < canvas.height) {
@@ -94,22 +96,22 @@ export async function downloadAsPDF(
         const cutAt  = cursor + sliceH
         const orphan = sectionStarts.find((sy) => sy > cutAt - minGapPx && sy < cutAt)
         if (orphan !== undefined) {
-          // Cut just before the upcoming section
           sliceH = Math.max(1, orphan - cursor - 2)
         }
       }
 
-      pages.push({ y: cursor, h: sliceH })
+      pageBounds.push({ y: cursor, h: sliceH })
       cursor += sliceH
     }
 
-    // ── Render each page into the PDF ────────────────────────────────────────
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    // ── Build page dataUrls on the main thread (canvas access required) ──────
+    // Yield every few pages so the browser stays responsive for multi-page PDFs.
+    const pageData: Array<{ dataUrl: string; imgH: number }> = []
+    for (let i = 0; i < pageBounds.length; i++) {
+      if (i > 0 && i % 3 === 0) await yieldToMain()
 
-    for (let i = 0; i < pages.length; i++) {
-      const { y: sliceY, h: sliceH } = pages[i]
+      const { y: sliceY, h: sliceH } = pageBounds[i]
 
-      // Draw this slice onto a temporary canvas with a white background
       const pageCanvas    = document.createElement('canvas')
       pageCanvas.width    = canvas.width
       pageCanvas.height   = Math.ceil(sliceH)
@@ -119,21 +121,21 @@ export async function downloadAsPDF(
       ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height)
       ctx.drawImage(canvas, 0, sliceY, canvas.width, sliceH, 0, 0, canvas.width, sliceH)
 
-      if (i > 0) pdf.addPage()
-
-      // imgH preserves the aspect ratio: width maps to contentW
       const imgH = (sliceH / canvas.width) * contentW
-      pdf.addImage(
-        pageCanvas.toDataURL('image/png'),
-        'PNG',
-        MARGIN_MM,
-        MARGIN_MM,
-        contentW,
-        imgH
-      )
+      pageData.push({ dataUrl: pageCanvas.toDataURL('image/png'), imgH })
     }
 
-    pdf.save(filename || 'question-paper.pdf')
+    // ── Offload jsPDF assembly to a Web Worker so the main thread is free ────
+    const blob = await assemblePDFInWorker(pageData, contentW, MARGIN_MM)
+
+    // ── Trigger download ─────────────────────────────────────────────────────
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || 'question-paper.pdf'
+    a.click()
+    URL.revokeObjectURL(url)
+
     return { success: true }
   } catch (err) {
     // Always restore styles even on failure
@@ -142,4 +144,27 @@ export async function downloadAsPDF(
     console.error('PDF generation error:', err)
     return { success: false, error: 'Could not generate PDF. Please try again.' }
   }
+}
+
+function assemblePDFInWorker(
+  pages: Array<{ dataUrl: string; imgH: number }>,
+  contentW: number,
+  marginMM: number
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./pdf.worker.ts', import.meta.url))
+    worker.onmessage = (e: MessageEvent<{ success: boolean; blob?: Blob; error?: string }>) => {
+      worker.terminate()
+      if (e.data.success && e.data.blob) {
+        resolve(e.data.blob)
+      } else {
+        reject(new Error(e.data.error ?? 'PDF worker failed'))
+      }
+    }
+    worker.onerror = (err) => {
+      worker.terminate()
+      reject(err)
+    }
+    worker.postMessage({ pages, contentW, marginMM })
+  })
 }

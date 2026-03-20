@@ -207,6 +207,15 @@ body {
   to { opacity: 1; transform: translateX(0); }
 }
 
+/* Assignment card hover effect */
+.assignment-card {
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.assignment-card:not(.confirming-delete):hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  border-color: var(--color-text-muted);
+}
+
 /* Responsive layout helpers */
 .desktop-only { display: flex; }
 .mobile-only  { display: none; }

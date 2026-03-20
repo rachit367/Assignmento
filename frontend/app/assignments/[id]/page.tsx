@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { AlertCircle, Download, RefreshCw } from 'lucide-react'
 import AppShell from '@/components/layout/AppShell'
@@ -29,12 +29,7 @@ export default function AssignmentOutputPage() {
 
   const liveStatus = generationStatus[id] ?? currentAssignment?.status ?? 'pending'
 
-  useEffect(() => {
-    if (!id) return
-    fetchAssignment()
-  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function fetchAssignment() {
+  const fetchAssignment = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -47,13 +42,18 @@ export default function AssignmentOutputPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [id, setCurrentAssignment, updateGenerationStatus])
+
+  useEffect(() => {
+    if (!id) return
+    fetchAssignment()
+  }, [id, fetchAssignment])
 
   useEffect(() => {
     if (liveStatus === 'complete' && !currentAssignment?.generatedContent) {
       fetchAssignment()
     }
-  }, [liveStatus]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [liveStatus, currentAssignment?.generatedContent, fetchAssignment])
 
   async function handleRegenerate() {
     if (regenerating) return

@@ -50,15 +50,18 @@ async function handleGetAllAssignments(queryParams) {
     if (cached) {
       const parsed = JSON.parse(cached)
       memoryCache.set(cacheKey, { expiresAt: now + CACHE_TTL * 1000, value: parsed })
+      setTimeout(() => memoryCache.delete(cacheKey), CACHE_TTL * 1000)
       return { ...parsed, fromCache: true }
     }
   }
 
-  // Use a prefix regex so MongoDB can use an index on `name` (instead of scanning the whole collection).
-  // Note: this changes semantics from "contains" to "startsWith".
+  // Use a case-sensitive prefix regex so MongoDB can use the B-tree index on `name`.
+  // Names are stored capitalized (first char upper, rest lower), so we apply the same
+  // transform to the search term to keep matching consistent.
   const query = {}
   if (search) {
-    query.name = { $regex: `^${escapeRegex(search)}`, $options: 'i' }
+    const normalizedSearch = escapeRegex(search.charAt(0).toUpperCase() + search.slice(1).toLowerCase())
+    query.name = { $regex: `^${normalizedSearch}` }
   }
   if (status && status !== 'all') {
     query.status = status
@@ -81,7 +84,9 @@ async function handleGetAllAssignments(queryParams) {
   }
 
   // 3) Populate memory cache so next request is fast even if Redis is down.
+  //    Schedule active eviction so expired entries don't accumulate indefinitely.
   memoryCache.set(cacheKey, { expiresAt: now + CACHE_TTL * 1000, value: result })
+  setTimeout(() => memoryCache.delete(cacheKey), CACHE_TTL * 1000)
 
   // 4) Populate Redis cache when available.
   if (redisReady) {
@@ -132,7 +137,19 @@ async function handleCreateAssignment(data, io) {
     status: 'pending',
   })
 
-  await addAIJob(assignment._id.toString())
+  try {
+    await addAIJob(assignment._id.toString())
+  } catch (queueErr) {
+    // If we can't queue the job, mark the assignment as failed immediately
+    // so the user sees an error rather than it hanging in "pending" forever.
+    await Assignment.findByIdAndUpdate(assignment._id, {
+      status: 'error',
+      errorMessage: 'Failed to queue generation job. Please try regenerating.',
+    })
+    const err = new Error('Failed to queue AI generation job')
+    err.statusCode = 503
+    throw err
+  }
 
   if (io) {
     io.emit('generation:queued', { assignmentId: assignment._id.toString() })
@@ -195,7 +212,17 @@ async function handleRegenerateAssignment(id, io) {
     $unset: { generatedContent: 1 },
   })
 
-  await addAIJob(id)
+  try {
+    await addAIJob(id)
+  } catch (queueErr) {
+    await Assignment.findByIdAndUpdate(id, {
+      status: 'error',
+      errorMessage: 'Failed to queue regeneration job. Please try again.',
+    })
+    const err = new Error('Failed to queue AI generation job')
+    err.statusCode = 503
+    throw err
+  }
 
   if (io) {
     io.to(`assignment:${id}`).emit('generation:queued', {
