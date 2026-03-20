@@ -5,7 +5,6 @@ const { handleGenerateAssessment } = require('../services/aiService')
 
 const connection = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,
-  tls: { rejectUnauthorized: true },
 })
 
 function initWorker(io) {
