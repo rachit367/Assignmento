@@ -1,11 +1,12 @@
-const { openrouter, AI_MODEL } = require('../config/openrouter')
+const { openrouter, AI_MODELS } = require('../config/openrouter')
 const { buildAssessmentPrompt } = require('../prompts/assessmentPrompt')
 
-async function handleGenerateAssessment(assignment) {
-  const userPrompt = buildAssessmentPrompt(assignment)
-
+// Call a single model and return the parsed assessment object.
+// Throws if the model errors, returns nothing, or returns unusable content —
+// the caller catches this and falls through to the next model in AI_MODELS.
+async function generateWithModel(model, userPrompt) {
   const response = await openrouter.chat.completions.create({
-    model: AI_MODEL,
+    model,
     messages: [
       {
         role: 'system',
@@ -40,6 +41,33 @@ async function handleGenerateAssessment(assignment) {
 
   if (!Array.isArray(parsed.sections) || parsed.sections.length === 0) {
     throw new Error('AI response missing sections array')
+  }
+
+  return parsed
+}
+
+async function handleGenerateAssessment(assignment) {
+  const userPrompt = buildAssessmentPrompt(assignment)
+
+  // Try each model in order. The first one that returns a usable response wins.
+  // If a model is removed/renamed (404), rate-limited, or returns bad JSON,
+  // we log it and fall through to the next model in the chain.
+  let parsed
+  let lastError
+  for (const model of AI_MODELS) {
+    try {
+      parsed = await generateWithModel(model, userPrompt)
+      break
+    } catch (err) {
+      lastError = err
+      console.warn(`Model "${model}" failed, trying next: ${err.message}`)
+    }
+  }
+
+  if (!parsed) {
+    throw new Error(
+      `All AI models failed. Last error: ${lastError?.message || 'unknown error'}`
+    )
   }
 
   const sections = parsed.sections.map((section, si) => ({

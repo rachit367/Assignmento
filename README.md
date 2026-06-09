@@ -19,7 +19,7 @@ graph TD
     B -- Queue Job --> D[Upstash Redis + BullMQ]
     D -- Process --> E[AI Worker]
     E -- Call AI --> F[OpenRouter]
-    F -- arcee-ai/trinity-large-preview:free --> E
+    F -- AI_MODELS fallback chain --> E
     E -- Update Doc --> C
     E -- Emit Event --> G[Socket.io]
     G -- Notify Client --> A
@@ -37,7 +37,7 @@ graph TD
 | Database | MongoDB Atlas (Mongoose) |
 | Queue | BullMQ + Upstash Redis |
 | Real-time | Socket.io |
-| AI | OpenRouter — `arcee-ai/trinity-large-preview:free` |
+| AI | OpenRouter — hardcoded `AI_MODELS` fallback chain |
 | PDF | html2canvas + jsPDF |
 | Icons | Lucide React |
 
@@ -187,9 +187,10 @@ PORT=3000
 MONGO_URI=your_mongodb_atlas_uri
 REDIS_URL=your_upstash_redis_url
 OPENROUTER_API_KEY=your_openrouter_key
-AI_MODEL=arcee-ai/trinity-large-preview:free
 FRONTEND_URL=http://localhost:8080
 ```
+
+> The AI models are hardcoded as a fallback chain in `backend/config/openrouter.js` (`AI_MODELS`). The worker tries each model in order and falls through to the next if one is removed/renamed (404), rate-limited, or returns bad output — so there's no single model to misconfigure.
 
 ```bash
 npm run dev
